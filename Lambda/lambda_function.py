@@ -2,6 +2,7 @@
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
+
 ### Functionality Helper Functions ###
 def parse_int(n):
     """
@@ -110,8 +111,59 @@ In this section, you will create an Amazon Lambda function that will validate th
 7. Build your bot, and test it with valid and invalid data for the slots.
 
 """
+### Validate inputs
+def validate_input(first_name, age, investment_amount, risk_level,intent_request):
+    #Check name is valid
+    if first_name is not None:
+        if not first_name.isalpha():
+            return build_validation_result(
+                False, 
+                "firstName", 
+                "First Name contains numbers. Please retry and enter a valid first name."
+            )
+    #Check if age is between 0 and 65
+    if age is not None:
+        age=parse_int(age)
+        if not(age > 0 and age < 65) :
+            return build_validation_result(
+                False,
+                "age",
+                "The age should be greater than zero, and less than 65"
+            )
+    #Check if investment amount is greater than 5000
+    if  investment_amount is not None:
+        investment_amount=parse_int(investment_amount)
+        is_investment_amount_valid = investment_amount >= 5000
+        if not (is_investment_amount_valid) :
+            return build_validation_result(
+                False,
+                "investmentAmount",
+                "The amount should be greater than $5000 "
+            )
+    #Check if risk levels are within the select list (ignoring case)
+    if risk_level is not None:       
+        if not (risk_level.lower() in ['none', 'low', 'medium', 'high']):
+            return build_validation_result(
+                False,
+                "riskLevel",
+                "The risk_level should be None, Low, Medium or High"
+            )
+    return build_validation_result(True, None, None)
 
-
+### Create Recommendations
+def get_recommendation(risk_level):
+    recommendation=""
+    if (risk_level.lower()== 'none'):
+        recommendation='100% bonds (AGG), 0% equities (SPY)'
+    elif (risk_level.lower()== 'low'):
+        recommendation='60% bonds (AGG), 40% equities (SPY)'
+    elif (risk_level.lower() == 'medium'):
+        recommendation='40% bonds (AGG), 60% equities (SPY)'
+    elif (risk_level.lower() == 'high'):
+        recommendation='20% bonds (AGG), 80% equities (SPY)'
+        
+    return recommendation
+    
 ### Intents Handlers ###
 def recommend_portfolio(intent_request):
     """
@@ -124,69 +176,50 @@ def recommend_portfolio(intent_request):
     risk_level = get_slots(intent_request)["riskLevel"]
     source = intent_request["invocationSource"]
 
-    age=parse_int(age)
-    investment_amount=float(investment_amount)
     
-    recommendation=""
-    #if verify_age(age) and verify_investment(investment_amount):
-    #   recommendation=get_recommendation(risk_level) 
-    if not(age > 0 and age < 65) :
-        return build_validation_result(
-            False,
-            "age",
-            "The age should be greater than zero, and less than 65"
-        )
-
-    if investment_amount < 5000 :
-        return build_validation_result(
-            False,
-            "investment_amount",
-            "The amount should be greater than $5000, "
-        )
-
+    
+    
+    if source == "DialogCodeHook":
+        # Gets all the slots
+        slots = get_slots(intent_request)
+    
+        #validate inputs
+        validation_result = validate_input(first_name, age,investment_amount,risk_level,intent_request)
+        
+        # If the data provided by the user is not valid,
+        # the elicitSlot dialog action is used to re-prompt for the first violation detected.
+        if not validation_result["isValid"]:
+            slots[validation_result["violatedSlot"]] = None  # Cleans invalid slot
+    
+            # Returns an elicitSlot dialog to request new data for the invalid slot
+            return elicit_slot(
+                intent_request["sessionAttributes"],
+                intent_request["currentIntent"]["name"],
+                slots,
+                validation_result["violatedSlot"],
+                validation_result["message"],
+            )
+            # Fetch current session attributes
+        output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
             
-    if (risk_level== 'None'):
-        recommendation='100% bonds (AGG), 0% equities (SPY)'
-    elif (risk_level== 'Low'):
-        recommendation='60% bonds (AGG), 40% equities (SPY)'
-    elif (risk_level == 'Medium'):
-        recommendation='40% bonds (AGG), 60% equities (SPY)'
-    elif (risk_level == 'High'):
-        recommendation='20% bonds (AGG), 80% equities (SPY)'
-    else:
-        return build_validation_result(
-            False,
-            "risk_level",
-            "The risk_level should be None,Low,Medium or High "
-        )    
+            # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        return delegate(output_session_attributes, get_slots(intent_request))
+
+    recommendation=get_recommendation(risk_level)
     
     return close(
         intent_request["sessionAttributes"],
         "Fulfilled",
         {
             "contentType": "PlainText",
-            "content": """Thank you for your information;{}, {}years old, with investment ${} and risk Level {}. Investment Recommendation = {}
+            "content": """Investment Recommendation for {}, {}years old, with investment ${} and risk Level {}  {}
             """.format(
                 first_name, age, investment_amount, risk_level,recommendation
             ),
         },
     )
 
-def verify_age(age):
-    return 0 < age < 65 
 
-def verify_investment_amount(amount):
-    return amount >=5000
-
-def get_recommendation(risk_level):
-    switcher={
-        'none':'100% bonds (AGG), 0% equities (SPY)',
-        'low':'60% bonds (AGG), 40% equities (SPY)',
-        'medium':'40% bonds (AGG), 60% equities (SPY)',
-        'high':'20% bonds (AGG), 80% equities (SPY)'
-    }
-    return switcher.get(lower(risk_level),"Invalid risk level: "+risk_level)
-    
 ### Intents Dispatcher ###
 def dispatch(intent_request):
     """
@@ -208,5 +241,4 @@ def lambda_handler(event, context):
     Route the incoming request based on intent.
     The JSON body of the request is provided in the event slot.
     """
-
     return dispatch(event)
