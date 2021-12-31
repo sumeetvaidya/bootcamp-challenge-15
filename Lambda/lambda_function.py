@@ -115,12 +115,14 @@ In this section, you will create an Amazon Lambda function that will validate th
 def validate_input(first_name, age, investment_amount, risk_level,intent_request):
     #Check name is valid
     if first_name is not None:
-        if not first_name.isalpha():
+        first_name=str(first_name)
+        if any(char.isdigit() for char in first_name):
             return build_validation_result(
                 False, 
                 "firstName", 
                 "First Name contains numbers. Please retry and enter a valid first name."
-            )
+                )
+
     #Check if age is between 0 and 65
     if age is not None:
         age=parse_int(age)
@@ -199,10 +201,10 @@ def recommend_portfolio(intent_request):
                 validation_result["violatedSlot"],
                 validation_result["message"],
             )
-            # Fetch current session attributes
+        # Fetch current session attributes
         output_session_attributes = intent_request['sessionAttributes'] if intent_request['sessionAttributes'] is not None else {}
             
-            # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
+        # Once all slots are valid, a delegate dialog is returned to Lex to choose the next course of action.
         return delegate(output_session_attributes, get_slots(intent_request))
 
     recommendation=get_recommendation(risk_level)
@@ -212,7 +214,7 @@ def recommend_portfolio(intent_request):
         "Fulfilled",
         {
             "contentType": "PlainText",
-            "content": """Investment Recommendation for {}, {}years old, with investment ${} and risk Level {}  {}
+            "content": """Investment Recommendation for {}, {}years old, with investment ${} and risk Level {}:  {}
             """.format(
                 first_name, age, investment_amount, risk_level,recommendation
             ),
